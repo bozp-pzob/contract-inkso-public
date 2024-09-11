@@ -1,0 +1,26 @@
+{
+    "name": "contracts-stream-gate",
+    "version": "1.0.0",
+    "description": "",
+    "main": "index.js",
+    "scripts": {
+        "test": "echo \"Error: no test specified\" && exit 1"
+    },
+    "author": "",
+    "license": "ISC",
+    "type": "module",
+    "devDependencies": {
+        "@erc725/smart-contracts": "^7.0.0",
+        "@lukso/lsp-smart-contracts": "^0.14",
+        "@nomiclabs/hardhat-ethers": "^2.2.3",
+        "@nomiclabs/hardhat-etherscan": "^3.1.7",
+        "@openzeppelin/contracts": "^4.9.2",
+        "dotenv": "^16.3.1",
+        "ethers": "^5.7.2",
+        "hardhat": "^2.22.3"
+    },
+    "dependencies": {
+        "@erc725/erc725.js": "^0.23.1",
+        "solidity-bytes-utils": "^0.8.0"
+    }
+}
