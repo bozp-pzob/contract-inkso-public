@@ -8,6 +8,6 @@
 pragma solidity ^0.8.19;
 
 interface IInsignia {
-    function bidMint(address to, uint256 amount) external;
+    function bidMint(address to) external;
     function owner() external view returns (address);
 }

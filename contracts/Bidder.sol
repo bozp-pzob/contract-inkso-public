@@ -8,6 +8,7 @@
 pragma solidity ^0.8.19;
 
 import {IInsignia} from "./interfaces/IInsignia.sol";
+import {IInsigniaFactory} from "./interfaces/IInsigniaFactory.sol";
 
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
@@ -19,9 +20,10 @@ contract Bidder is ReentrancyGuard {
         address insigniaContract;
     }
 
-    address public inksoAddress = 0x39b14cAAb195bfD15Ce91bdB483966249159c07D;
     uint256 public bidCounter;
     mapping(uint256 => Bid) public bids;
+    
+    address factoryContract;
 
     event NewBid(uint256 bidId, address bidder, uint256 amount, address nftContract);
     event BidAccepted(uint256 bidId, address bidder, uint256 amount, address nftContract);
@@ -32,11 +34,14 @@ contract Bidder is ReentrancyGuard {
         _;
     }
 
-    constructor() {
+    constructor(address factoryContract_) {
         bidCounter = 0;
+        factoryContract = factoryContract_;
     }
 
-    function placeBid(address _insigniaContract) public payable nonReentrant {
+    function placeBid(uint256 _insigniaContractIndex) public payable nonReentrant {
+        address _insigniaContract = IInsigniaFactory(factoryContract).getDeployedTokens()[_insigniaContractIndex];
+        
         require(msg.value >= 0, "Bid amount must be greater than or equal to 0.");
         require(_insigniaContract != address(0), "Invalid NFT contract address.");
 
@@ -51,7 +56,7 @@ contract Bidder is ReentrancyGuard {
         bidCounter++;
     }
 
-    function acceptBid(uint256 bidId, uint256 amount) public payable nonReentrant onlyNFTOwner(bids[bidId].insigniaContract) {
+    function acceptBid(uint256 bidId) public payable nonReentrant onlyNFTOwner(bids[bidId].insigniaContract) {
         Bid storage bid = bids[bidId];
         require(bid.amount > 0, "Invalid bid.");
         require(!bid.accepted, "Bid already accepted.");
@@ -60,19 +65,21 @@ contract Bidder is ReentrancyGuard {
         emit BidAccepted(bidId, bid.bidder, bid.amount, bid.insigniaContract);
 
         // // Mint the NFT from the external contract
-        IInsignia(bid.insigniaContract).bidMint(bid.bidder, amount);
+        IInsignia(bid.insigniaContract).bidMint(bid.bidder);
 
         // // Transfer the bid amount to the owner
         uint256 amount95 = (bid.amount * 95) / 100;
         uint256 amount5 = bid.amount - amount95;
 
-        (bool success, ) = inksoAddress.call{value: amount5}(
+        (bool success, ) = factoryContract.call{value: amount5}(
             bytes.concat(bytes4(0), bytes(unicode"sending percentage"))
         );
+        require(success, "ETH percentage failed");
         
         (bool owner_success, ) = IInsignia(bid.insigniaContract).owner().call{value: amount95}(
             bytes.concat(bytes4(0), bytes(unicode"sending bid to owner"))
         );
+        require(owner_success, "ETH transfer failed");
     }
 
     function withdraw(uint256 bidId) public nonReentrant {

@@ -1,5 +1,5 @@
 /*
- @title Inkso Insignia
+ @title Inkso Insignia Factory
  @author: @bozp
  @dev: @bozp
 */
@@ -15,11 +15,10 @@ interface InitializerLSP8 {
     function initialize(
         string memory name_,
         address challengeOwner_,
-        uint256 maxSupply_,
-        uint256 pricePerToken_,
         bytes memory collectionLSP4MetadataUri_,
         bytes memory lsp4MetadataUri_,
-        bytes memory lsp4BidMetadataUri_
+        bytes memory lsp4BidMetadataUri_,
+        address factoryContract_
     ) external;
 }
 
@@ -31,12 +30,11 @@ contract InsigniaFactory is Ownable {
     address[] public deployedTokens;
     mapping (address => address[]) private deployedTokensByUser;
     uint256 public priceToCreate = 0.1 ether;
-    
-    constructor() {}
+    uint256 public priceToSend = 0.1 ether;
 
     // Event to emit when a new LSP8 token is created
     event InsigniaCreated(address indexed tokenAddress, address indexed bidderAddress);
-    
+
     error InsufficientBalance();
 
     function setLatestImplementation(address _latestInsigniaImplementation) external onlyOwner {
@@ -50,11 +48,14 @@ contract InsigniaFactory is Ownable {
     function setCreatePrice(uint256 amount) external onlyOwner {
         priceToCreate = amount;
     }
+    
+    function setSendPrice(uint256 amount) external onlyOwner {
+        priceToSend = amount;
+    }
 
     function createInsignia(
         string memory name_,
-        uint256 pricePerToken_,
-        uint256 maxSupply_,
+        address challengeOwner_,
         bytes memory collectionLSP4MetadataUri,
 		bytes memory lsp4MetadataUri,
 		bytes memory lsp4BidMetadataUri
@@ -66,11 +67,10 @@ contract InsigniaFactory is Ownable {
         InitializerLSP8(contractCreated).initialize(
             name_,
             msg.sender,
-            maxSupply_,
-            pricePerToken_,
             collectionLSP4MetadataUri,
             lsp4MetadataUri, 
-            lsp4BidMetadataUri
+            lsp4BidMetadataUri,
+            address(this)
         );
 
         deployedTokens.push(address(contractCreated));
@@ -83,7 +83,7 @@ contract InsigniaFactory is Ownable {
         return deployedTokens;
     }
 
-    // Function to get all deployed LSP8 by user tokens
+    // Function to get all deployed LSP8 tokens
     function getDeployedTokensByUser(address user) public view returns (address[] memory) {
         return deployedTokensByUser[user];
     }
@@ -92,6 +92,16 @@ contract InsigniaFactory is Ownable {
     function getBidContract() public view returns (address) {
         return latestBidderImplementation;
     }
+
+    // Function to get current send price
+    function getSendPrice() public view returns (uint256) {
+        return priceToSend;
+    }
+    
+    // Function to get current create price
+    function getCreatePrice() public view returns (uint256) {
+        return priceToCreate;
+    }
     
     function withdraw(uint256 amount) external onlyOwner {
         if (amount > address(this).balance) revert InsufficientBalance();
@@ -99,5 +109,10 @@ contract InsigniaFactory is Ownable {
         (bool success, ) = msg.sender.call{value: amount}(
             bytes.concat(bytes4(0), bytes(unicode"withdrawing"))
         );
+        require(success, "Withdraw failed");
     }
+
+    receive() external payable {}
+
+    fallback() external payable {}
 }
