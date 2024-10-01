@@ -14,21 +14,24 @@ import {
 import {LSP2Utils} from "@lukso/lsp-smart-contracts/contracts/LSP2ERC725YJSONSchema/LSP2Utils.sol";
 import {_INTERFACEID_LSP7} from "@lukso/lsp-smart-contracts/contracts/LSP7DigitalAsset/LSP7Constants.sol";
 import {_LSP4_CREATORS_ARRAY_KEY, _LSP4_CREATORS_MAP_KEY_PREFIX, _LSP4_METADATA_KEY} from "@lukso/lsp-smart-contracts/contracts/LSP4DigitalAssetMetadata/LSP4Constants.sol";
+import {IInsigniaFactory} from "./interfaces/IInsigniaFactory.sol";
 
 contract Insignia is LSP8IdentifiableDigitalAssetInitAbstract, ReentrancyGuard {
-    uint256 public maxSupply = 0;
-    uint256 public freeSupply = 0;
-    uint256 public paidSupply = 0;
-    uint256 public burnSupply = 0;
-    uint256 public pricePerToken = 0.01 ether;
+    uint256 public freeSupply;
+    uint256 public paidSupply;
+    uint256 public burnSupply;
     bytes collectionLSP4MetadataUri;
     bytes lsp4MetadataUri;
     bytes lsp4BidMetadataUri;
+    address factoryContract;
 
     error InsufficientBalance();
     error NotActive();
     error TokenDoesntExist();
     error incorrectPermissions();
+    error PaymentSendFailed();
+    error SoulBoundToken();
+    error NotBiddingContract();
 
     // Event to emit when a new LSP8 token is created
     event InsigniaMinted(address indexed ownerAddress, bytes32 indexed tokenId);
@@ -42,19 +45,17 @@ contract Insignia is LSP8IdentifiableDigitalAssetInitAbstract, ReentrancyGuard {
     function initialize(
         string memory name_,
         address challengeOwner_,
-        uint256 maxSupply_,
-        uint256 pricePerToken_,
         bytes memory collectionLSP4MetadataUri_,
         bytes memory lsp4MetadataUri_,
-        bytes memory lsp4BidMetadataUri_
+        bytes memory lsp4BidMetadataUri_,
+        address factoryContract_
     )
         external virtual initializer
     {
-        maxSupply = maxSupply_;
-        pricePerToken = pricePerToken_;
         collectionLSP4MetadataUri = collectionLSP4MetadataUri_;
         lsp4MetadataUri = lsp4MetadataUri_;
         lsp4BidMetadataUri = lsp4BidMetadataUri_;
+        factoryContract = factoryContract_;
 
         _initialize(
             name_,
@@ -87,47 +88,48 @@ contract Insignia is LSP8IdentifiableDigitalAssetInitAbstract, ReentrancyGuard {
         );
     }
 
-    function mint(address to, uint256 amount) external payable nonReentrant onlyOwner {
+    function mint(address to) public payable nonReentrant onlyOwner {
         uint256 tokenSupply = paidSupply + freeSupply;
+        uint256 pricePerToken = IInsigniaFactory(factoryContract).getSendPrice();
 
-        if (msg.value != pricePerToken * amount) revert InsufficientBalance();
-        require(tokenSupply + amount <= maxSupply, "Exceeds Max supply");
+        if (msg.value != pricePerToken) revert InsufficientBalance();
+
+        (bool success,  ) = payable(factoryContract).call{value: msg.value}("");
+        if ( ! success ) revert PaymentSendFailed();
 
         uint256 tokenId = ++tokenSupply;
 		_setDataForTokenId( bytes32(tokenId), _LSP4_METADATA_KEY, lsp4MetadataUri);
+        ++freeSupply;
         _mint(to, bytes32(tokenId), true, "");
-        freeSupply = ++freeSupply;
 
         emit InsigniaMinted(to, bytes32(tokenId));
     }
 
-    function bidMint(address to, uint256 amount) external payable nonReentrant {
+    function bidMint(address to) external payable nonReentrant {
         uint256 tokenSupply = paidSupply + freeSupply;
-        
-        require(tokenSupply + amount <= maxSupply, "Exceeds Max supply");
+        if ( msg.sender != IInsigniaFactory(factoryContract).getBidContract() ) revert NotBiddingContract();
         
         uint256 tokenId = ++tokenSupply;
 		_setDataForTokenId( bytes32(tokenId), _LSP4_METADATA_KEY, lsp4BidMetadataUri);
+        ++paidSupply;
         _mint(to, bytes32(tokenId), true, "");
-        paidSupply = ++paidSupply;
 
         emit InsigniaPaidMinted(to, bytes32(tokenId));
     }
 
-    function withdraw(uint256 amount) external onlyOwner {
+    function withdraw(uint256 amount) external nonReentrant onlyOwner {
         if (amount > address(this).balance) revert InsufficientBalance();
 
-        (bool success, ) = msg.sender.call{value: amount}(
-            bytes.concat(bytes4(0), bytes(unicode"withdrawing"))
-        );
+        (bool success, ) = msg.sender.call{value: amount}("");
+        if ( ! success ) revert PaymentSendFailed();
     }
 
-    function burn(bytes32 tokenId) external {
+    function burn(bytes32 tokenId) external nonReentrant {
         if (!_exists(tokenId)) revert TokenDoesntExist();
         address _owner = tokenOwnerOf(tokenId);
         if (msg.sender != _owner && msg.sender != owner()) revert incorrectPermissions();
+        ++burnSupply;
         _burn(tokenId, "");
-        burnSupply = ++burnSupply;
         emit InsigniaBurned(msg.sender, tokenId);
     }
 
@@ -138,7 +140,7 @@ contract Insignia is LSP8IdentifiableDigitalAssetInitAbstract, ReentrancyGuard {
         bool force,
         bytes memory data
     ) public virtual override {
-        require(false, "Insignia: token transfer is not allowed");
+        if ( true ) revert SoulBoundToken();
     }
 
     function getFreeCount() public view returns (uint256) {
